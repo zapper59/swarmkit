@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/docker/swarmkit/api"
+	"github.com/docker/swarmkit/api/defaults"
 	"github.com/docker/swarmkit/manager/orchestrator/testutils"
 	"github.com/docker/swarmkit/manager/state"
 	"github.com/docker/swarmkit/manager/state/store"
@@ -802,4 +803,218 @@ func TestOrchestratorRestartWindow(t *testing.T) {
 	assert.Equal(t, observedTask8.Status.State, api.TaskStateNew)
 	assert.Equal(t, observedTask8.DesiredState, api.TaskStateRunning)
 	assert.Equal(t, observedTask8.ServiceAnnotations.Name, "name1")
+}
+
+func TestOrchestratorBackoffValues(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s := store.NewMemoryStore(nil)
+	assert.NotNil(t, s)
+	defer s.Close()
+
+	orchestrator := NewReplicatedOrchestrator(s)
+	defer orchestrator.Stop()
+
+	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
+	defer cancel()
+
+	baseTime := 10 * time.Millisecond
+	factorTime := 20 * time.Millisecond
+	maxTime := 4 * time.Second
+
+	// Create a service with one instance specified before the orchestrator is
+	// started. This should result in one task when the orchestrator starts up.
+	err := s.Update(func(tx store.Tx) error {
+		j1 := &api.Service{
+			ID: "id1",
+			Spec: api.ServiceSpec{
+				Annotations: api.Annotations{
+					Name: "name1",
+				},
+				Task: api.TaskSpec{
+					Runtime: &api.TaskSpec_Container{
+						Container: &api.ContainerSpec{},
+					},
+					Restart: &api.RestartPolicy{
+						Condition: api.RestartOnAny,
+						Backoff: &api.BackoffPolicy{
+							Base:   gogotypes.DurationProto(baseTime),
+							Factor: gogotypes.DurationProto(factorTime),
+							Max:    gogotypes.DurationProto(maxTime),
+						},
+						MaxAttempts: 2,
+					},
+				},
+				Mode: &api.ServiceSpec_Replicated{
+					Replicated: &api.ReplicatedService{
+						Replicas: 1,
+					},
+				},
+			},
+		}
+		assert.NoError(t, store.CreateService(tx, j1))
+		return nil
+	})
+	assert.NoError(t, err)
+
+	// Start the orchestrator.
+	go func() {
+		assert.NoError(t, orchestrator.Run(ctx))
+	}()
+
+	observedTask1 := testutils.WatchTaskCreate(t, watch)
+	assert.Equal(t, observedTask1.Status.State, api.TaskStateNew)
+	assert.Equal(t, observedTask1.ServiceAnnotations.Name, "name1")
+
+	// Check that the task has the correct BackoffPolicy values
+	Backoff1 := observedTask1.Spec.Restart.Backoff
+	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(maxTime))
+
+	// Since observedTask1 hasn't failed yet, check that failuresAfterSuccess is 0
+	RestartSV1 := orchestrator.restarts
+	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask1), uint64(0))
+
+	// Fail observedTask1
+	updatedTask1 := observedTask1.Copy()
+	updatedTask1.Status = api.TaskStatus{State: api.TaskStateFailed, Timestamp: ptypes.MustTimestampProto(time.Now())}
+	err = s.Update(func(tx store.Tx) error {
+		assert.NoError(t, store.UpdateTask(tx, updatedTask1))
+		return nil
+	})
+	assert.NoError(t, err)
+
+	// observedTask1.Status.State changes to FAILED
+	testutils.Expect(t, watch, state.EventCommit{})
+	testutils.Expect(t, watch, api.EventUpdateTask{})
+
+	// observedTask1.DesiredState changes to SHUTDOWN
+	testutils.Expect(t, watch, state.EventCommit{})
+	testutils.Expect(t, watch, api.EventUpdateTask{})
+
+	// Observe that our orchestrator creates another task in its place
+	observedTask2 := testutils.WatchTaskCreate(t, watch)
+	assert.Equal(t, observedTask2.Status.State, api.TaskStateNew)
+	assert.Equal(t, observedTask2.DesiredState, api.TaskStateReady)
+	assert.Equal(t, observedTask2.ServiceAnnotations.Name, "name1")
+
+	// Check that the task has the correct BackoffPolicy values
+	Backoff2 := observedTask2.Spec.Restart.Backoff
+	assert.Equal(t, Backoff2.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, Backoff2.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, Backoff2.Max, gogotypes.DurationProto(maxTime))
+
+	// We failed once
+	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask2), uint64(1))
+
+	testutils.Expect(t, watch, state.EventCommit{})
+
+	delay2a := baseTime + factorTime
+	observedTask2a := testutils.WatchTaskUpdateDelay(t, watch, delay2a)
+	assert.Equal(t, observedTask2a.DesiredState, api.TaskStateRunning)
+	assert.Equal(t, observedTask2a.ServiceAnnotations.Name, "name1")
+}
+
+func TestOrchestratorTaskRestartDelay(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s := store.NewMemoryStore(nil)
+	assert.NotNil(t, s)
+	defer s.Close()
+
+	orchestrator := NewReplicatedOrchestrator(s)
+	defer orchestrator.Stop()
+
+	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
+	defer cancel()
+
+	baseTime := 10 * time.Millisecond
+	factorTime := 20 * time.Millisecond
+	maxTime := 4 * time.Second
+
+	// Create a service with two instances specified before the orchestrator is
+	// started. This should result in two tasks when the orchestrator
+	// starts up.
+	j1 := &api.Service{
+		ID: "id1",
+		Spec: api.ServiceSpec{
+			Annotations: api.Annotations{
+				Name: "name1",
+			},
+			Task: api.TaskSpec{
+				Runtime: &api.TaskSpec_Container{
+					Container: &api.ContainerSpec{},
+				},
+				Restart: &api.RestartPolicy{
+					Condition: api.RestartOnAny,
+					Backoff: &api.BackoffPolicy{
+						Base:   gogotypes.DurationProto(baseTime),
+						Factor: gogotypes.DurationProto(factorTime),
+						Max:    gogotypes.DurationProto(maxTime),
+					},
+					MaxAttempts: 2,
+				},
+			},
+			Mode: &api.ServiceSpec_Replicated{
+				Replicated: &api.ReplicatedService{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+	err := s.Update(func(tx store.Tx) error {
+		assert.NoError(t, store.CreateService(tx, j1))
+		return nil
+	})
+	assert.NoError(t, err)
+
+	// Start the orchestrator.
+	go func() {
+		assert.NoError(t, orchestrator.Run(ctx))
+	}()
+
+	observedTask1 := testutils.WatchTaskCreate(t, watch)
+	assert.Equal(t, observedTask1.Status.State, api.TaskStateNew)
+	assert.Equal(t, observedTask1.ServiceAnnotations.Name, "name1")
+
+	// Check that the task has the correct BackoffPolicy values
+	Backoff1 := observedTask1.Spec.Restart.Backoff
+	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(maxTime))
+
+	// Since observedTask1 hasn't failed yet, check that failuresAfterSuccess is 0
+	RestartSV1 := orchestrator.restarts
+	delayP, err := RestartSV1.TaskRestartDelay(ctx, observedTask1)
+	assert.NoError(t, err)
+
+	// Check that the delay duration is between 0 and the calculated backoff duration
+	// assert.Equal(t, *delayP, baseTime + factorTime)
+	assert.True(t, (0 <= *delayP) && (*delayP < baseTime+factorTime))
+
+	// Update the service to use the original restart delay
+	err = s.Update(func(tx store.Tx) error {
+		service := store.GetService(tx, j1.ID)
+		service.Spec.Annotations.Name = "name2"
+		service.Spec.Task.Restart.Backoff = nil
+		service.Spec.Task.Restart.Delay = defaults.Service.Task.Restart.Delay
+		assert.NoError(t, store.UpdateService(tx, service))
+		return nil
+	})
+	assert.NoError(t, err)
+
+	observedTask2 := testutils.WatchTaskCreate(t, watch)
+	assert.Equal(t, observedTask2.Status.State, api.TaskStateNew)
+	assert.Equal(t, observedTask2.ServiceAnnotations.Name, "name2")
+
+	// Check that we use the original delay (not backoff based)
+	originalDelay, err := gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
+	assert.NoError(t, err)
+
+	delayP2, err := RestartSV1.TaskRestartDelay(ctx, observedTask2)
+	assert.NoError(t, err)
+	assert.Equal(t, *delayP2, originalDelay)
 }
