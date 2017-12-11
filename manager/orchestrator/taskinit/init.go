@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/docker/swarmkit/api"
-	"github.com/docker/swarmkit/api/defaults"
 	"github.com/docker/swarmkit/log"
 	"github.com/docker/swarmkit/manager/orchestrator"
 	"github.com/docker/swarmkit/manager/orchestrator/restart"
@@ -62,17 +61,9 @@ func CheckTasks(ctx context.Context, s *store.MemoryStore, readTx store.ReadTx, 
 			if t.DesiredState != api.TaskStateReady || t.Status.State > api.TaskStateRunning {
 				continue
 			}
-			restartDelay, _ := gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
-			if t.Spec.Restart != nil && t.Spec.Restart.Delay != nil {
-				var err error
-				restartDelay, err = gogotypes.DurationFromProto(t.Spec.Restart.Delay)
-				if err != nil {
-					log.G(ctx).WithError(err).Error("invalid restart delay")
-					restartDelay, _ = gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
-				}
-			}
-			//TODO
-			if restartDelay != 0 {
+			ret := startSupervisor.TaskRestartDelay(ctx, t)
+			if ret != nil && *ret >= 0 {
+				restartDelay := *ret
 				var timestamp time.Time
 				if t.Status.AppliedAt != nil {
 					timestamp, err = gogotypes.TimestampFromProto(t.Status.AppliedAt)

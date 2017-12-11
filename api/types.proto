@@ -341,8 +341,8 @@ message RestartPolicy {
 	// Note: can't use stdduration because this field needs to be nullable.
 	google.protobuf.Duration window = 4;
 
-		// Defines the backoff policy for this task.
-		BackoffPolicy backoff = 5;
+	// Defines the backoff policy for this task.
+	BackoffPolicy backoff = 5;
 }
 
 message BackoffPolicy {
