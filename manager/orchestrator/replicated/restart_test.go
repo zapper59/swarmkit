@@ -803,3 +803,112 @@ func TestOrchestratorRestartWindow(t *testing.T) {
 	assert.Equal(t, observedTask8.DesiredState, api.TaskStateRunning)
 	assert.Equal(t, observedTask8.ServiceAnnotations.Name, "name1")
 }
+
+func TestOrchestratorBackoffValues(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s := store.NewMemoryStore(nil)
+	assert.NotNil(t, s)
+	defer s.Close()
+
+	orchestrator := NewReplicatedOrchestrator(s)
+	defer orchestrator.Stop()
+
+	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
+	defer cancel()
+
+	// Create a service with two instances specified before the orchestrator is
+	// started. This should result in two tasks when the orchestrator
+	// starts up.
+	err := s.Update(func(tx store.Tx) error {
+		j1 := &api.Service{
+			ID: "id1",
+			Spec: api.ServiceSpec{
+				Annotations: api.Annotations{
+					Name: "name1",
+				},
+				Task: api.TaskSpec{
+					Runtime: &api.TaskSpec_Container{
+						Container: &api.ContainerSpec{},
+					},
+					Restart: &api.RestartPolicy{
+						Condition: api.RestartOnAny,
+						Backoff: &api.BackoffPolicy{
+							Base:   gogotypes.DurationProto(10 * time.Millisecond),
+							Factor: gogotypes.DurationProto(20 * time.Millisecond),
+							Max:    gogotypes.DurationProto(4 * time.Second),
+						},
+						MaxAttempts: 2,
+					},
+				},
+				Mode: &api.ServiceSpec_Replicated{
+					Replicated: &api.ReplicatedService{
+						Replicas: 1,
+					},
+				},
+			},
+		}
+		assert.NoError(t, store.CreateService(tx, j1))
+		return nil
+	})
+	assert.NoError(t, err)
+
+	// Start the orchestrator.
+	go func() {
+		assert.NoError(t, orchestrator.Run(ctx))
+	}()
+
+	observedTask1 := testutils.WatchTaskCreate(t, watch)
+	assert.Equal(t, observedTask1.Status.State, api.TaskStateNew)
+	assert.Equal(t, observedTask1.ServiceAnnotations.Name, "name1")
+
+	// Check that the task has the correct BackoffPolicy values
+	Backoff1 := observedTask1.Spec.Restart.Backoff
+	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(10 * time.Millisecond))
+	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(20 * time.Millisecond))
+	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(4 * time.Second))
+
+	// Since observedTask1 hasn't failed yet, check that failuresAfterSuccess is 0
+	RestartSV1 := orchestrator.restarts
+	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask1), uint64(0))
+	
+	// Fail observedTask1
+	updatedTask1 := observedTask1.Copy()
+	updatedTask1.Status = api.TaskStatus{State: api.TaskStateFailed, Timestamp: ptypes.MustTimestampProto(time.Now())}
+	err = s.Update(func(tx store.Tx) error {
+		assert.NoError(t, store.UpdateTask(tx, updatedTask1))
+		return nil
+	})
+	assert.NoError(t, err)
+
+	// observedTask1.Status.State changes to FAILED
+	testutils.Expect(t, watch, state.EventCommit{})
+	testutils.Expect(t, watch, api.EventUpdateTask{})
+
+	// observedTask1.DesiredState changes to SHUTDOWN
+	testutils.Expect(t, watch, state.EventCommit{})
+	testutils.Expect(t, watch, api.EventUpdateTask{})
+
+	// Observe that our orchestrator creates another task in its place
+	observedTask2 := testutils.WatchTaskCreate(t, watch)
+	assert.Equal(t, observedTask2.Status.State, api.TaskStateNew)
+	assert.Equal(t, observedTask2.DesiredState, api.TaskStateReady)
+	assert.Equal(t, observedTask2.ServiceAnnotations.Name, "name1")
+
+	// Check that the task has the correct BackoffPolicy values
+	Backoff2 := observedTask2.Spec.Restart.Backoff
+	assert.Equal(t, Backoff2.Base, gogotypes.DurationProto(10 * time.Millisecond))
+	assert.Equal(t, Backoff2.Factor, gogotypes.DurationProto(20 * time.Millisecond))
+	assert.Equal(t, Backoff2.Max, gogotypes.DurationProto(4 * time.Second))
+
+	// We failed once
+	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask2), uint64(1))
+
+	testutils.Expect(t, watch, state.EventCommit{})
+
+	delay2a := 10 * time.Millisecond + 20 * time.Millisecond
+	observedTask2a := testutils.WatchTaskUpdateBackoff(t, watch, delay2a)
+	assert.Equal(t, observedTask2a.DesiredState, api.TaskStateRunning)
+	assert.Equal(t, observedTask2a.ServiceAnnotations.Name, "name1")
+}

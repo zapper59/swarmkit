@@ -1,9 +1,9 @@
 package flagparser
 
 import (
+	"errors"
 	"fmt"
 	"time"
-	"errors"
 
 	"github.com/docker/swarmkit/api"
 	gogotypes "github.com/gogo/protobuf/types"
