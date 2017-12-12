@@ -329,7 +329,7 @@ message RestartPolicy {
 
 	// Delay between restart attempts
 	// Note: can't use stdduration because this field needs to be nullable.
-	// Note: ingored if backoff is non null
+	// Note: ignored if backoff is non null
 	google.protobuf.Duration delay = 2;
 
 	// MaxAttempts is the maximum number of restarts to attempt on an
