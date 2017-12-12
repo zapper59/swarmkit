@@ -61,8 +61,7 @@ func CheckTasks(ctx context.Context, s *store.MemoryStore, readTx store.ReadTx, 
 			if t.DesiredState != api.TaskStateReady || t.Status.State > api.TaskStateRunning {
 				continue
 			}
-			ret := startSupervisor.TaskRestartDelay(ctx, t)
-			if ret != nil && *ret >= 0 {
+			if ret, err := startSupervisor.TaskRestartDelay(ctx, t); err == nil && *ret >= 0 {
 				restartDelay := *ret
 				var timestamp time.Time
 				if t.Status.AppliedAt != nil {

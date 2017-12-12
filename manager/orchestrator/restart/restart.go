@@ -3,6 +3,7 @@ package restart
 import (
 	"container/list"
 	"errors"
+	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -104,7 +105,6 @@ func (r *Supervisor) waitRestart(ctx context.Context, oldDelay *delayedStart, cl
 // Restart initiates a new task to replace t if appropriate under the service's
 // restart policy.
 func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Cluster, service *api.Service, t api.Task) error {
-
 	// TODO(aluzzardi): This function should not depend on `service`.
 
 	// Is the old task still in the process of restarting? If so, wait for
@@ -158,11 +158,11 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	var restartDelay time.Duration
 	// Restart delay is not applied to drained nodes
 	if n == nil || n.Spec.Availability != api.NodeAvailabilityDrain {
-		ret := r.TaskRestartDelay(ctx, &t)
-		if ret == nil {
-			return nil
+		if ret, err := r.TaskRestartDelay(ctx, &t); err != nil {
+			restartDelay = *ret
+		} else {
+			return err
 		}
-		restartDelay = *ret
 	}
 
 	waitStop := true
@@ -190,8 +190,7 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 }
 
 // TaskRestartDelay calculates and returns the next delay based t's RestartPolicy
-// Returns nil on error parsing the RestartPolicy
-func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) *time.Duration {
+func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (*time.Duration, error) {
 	var restartDelay time.Duration
 	backoff := &api.BackoffPolicy{
 		Base:   defaults.Service.Task.Restart.Backoff.Base,
@@ -217,10 +216,10 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) *time.Du
 				log.G(ctx).WithError(err).Error("invalid restart delay; using default")
 				restartDelay, err = gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
 				if err != nil {
-					return nil
+					return nil, errors.New("error parsing RestartPolicy")
 				}
 			}
-			return &restartDelay
+			return &restartDelay, nil
 		}
 	}
 
@@ -228,13 +227,13 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) *time.Du
 	var base, factor, max time.Duration
 	var err error
 	if base, err = gogotypes.DurationFromProto(backoff.Base); err != nil {
-		return nil
+		return nil, errors.New("error parsing backoff Base")
 	}
 	if factor, err = gogotypes.DurationFromProto(backoff.Factor); err != nil {
-		return nil
+		return nil, errors.New("error parsing backoff Factor")
 	}
 	if max, err = gogotypes.DurationFromProto(backoff.Max); err != nil {
-		return nil
+		return nil, errors.New("error parsing backoff Max")
 	}
 
 	var failures uint64
@@ -250,16 +249,12 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) *time.Du
 		r.historyByService[serviceID][tuple] != nil {
 		restartInfo := r.historyByService[serviceID][tuple]
 		failures = restartInfo.failuresSinceSuccess
-		if failures < 0 {
-			// This should never happen
-			return nil
-		}
 	} else {
 		// History is not set on the first run of a task
 		failures = 0
 	}
 
-	backoffDuration := base + factor*time.Duration(1<<(failures))
+	backoffDuration := base + factor*math.Pow(2, failures)
 
 	if backoffDuration > max || backoffDuration < 0 {
 		backoffDuration = max
@@ -267,7 +262,7 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) *time.Du
 
 	// Choose a uniformly distributed value from [0, backoffDuration).
 	result := time.Duration(rand.Int63n(int64(backoffDuration)))
-	return &result
+	return &result, nil
 }
 
 // shouldRestart returns true if a task should be restarted according to the
