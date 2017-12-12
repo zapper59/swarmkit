@@ -908,7 +908,7 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 	testutils.Expect(t, watch, state.EventCommit{})
 
 	delay2a := 10*time.Millisecond + 20*time.Millisecond
-	observedTask2a := testutils.WatchTaskUpdateBackoff(t, watch, delay2a)
+	observedTask2a := testutils.WatchTaskUpdateDelay(t, watch, delay2a)
 	assert.Equal(t, observedTask2a.DesiredState, api.TaskStateRunning)
 	assert.Equal(t, observedTask2a.ServiceAnnotations.Name, "name1")
 }
