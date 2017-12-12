@@ -30,23 +30,11 @@ func WatchTaskCreate(t *testing.T, watch chan events.Event) *api.Task {
 
 // WatchTaskUpdate waits for a task to be updated.
 func WatchTaskUpdate(t *testing.T, watch chan events.Event) *api.Task {
-	for {
-		select {
-		case event := <-watch:
-			if task, ok := event.(api.EventUpdateTask); ok {
-				return task.Task
-			}
-			if _, ok := event.(api.EventCreateTask); ok {
-				assert.FailNow(t, "got EventCreateTask when expecting EventUpdateTask", fmt.Sprint(event))
-			}
-		case <-time.After(time.Second):
-			assert.FailNow(t, "no task update")
-		}
-	}
+	return WatchTaskUpdateDelay(t, watch, time.Second)
 }
 
 // WatchTaskUpdateBackoff waits for a task using the Backoff Policy to be updated
-func WatchTaskUpdateBackoff(t *testing.T, watch chan events.Event, delay time.Duration) *api.Task {
+func WatchTaskUpdateDelay(t *testing.T, watch chan events.Event, delay time.Duration) *api.Task {
 	for {
 		select {
 		case event := <-watch:
