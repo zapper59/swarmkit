@@ -84,11 +84,7 @@ func validateRestartPolicy(rp *api.RestartPolicy) error {
 		}
 	}
 
-	if err := validateBackoffPolicy(rm.Backoff); err != nil {
-		return err
-	}
-
-	return nil
+	return validateBackoffPolicy(rp.Backoff)
 }
 
 func validateBackoffPolicy(bp *api.BackoffPolicy) error {
