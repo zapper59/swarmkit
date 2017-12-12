@@ -818,6 +818,10 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
 	defer cancel()
 
+	baseTime := 10*time.Millisecond
+	factorTime := 20*time.Millisecond
+	maxTime := 4*time.Second
+
 	// Create a service with two instances specified before the orchestrator is
 	// started. This should result in two tasks when the orchestrator
 	// starts up.
@@ -835,9 +839,9 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 					Restart: &api.RestartPolicy{
 						Condition: api.RestartOnAny,
 						Backoff: &api.BackoffPolicy{
-							Base:   gogotypes.DurationProto(10 * time.Millisecond),
-							Factor: gogotypes.DurationProto(20 * time.Millisecond),
-							Max:    gogotypes.DurationProto(4 * time.Second),
+							Base:   gogotypes.DurationProto(baseTime),
+							Factor: gogotypes.DurationProto(factorTime),
+							Max:    gogotypes.DurationProto(maxTime),
 						},
 						MaxAttempts: 2,
 					},
@@ -865,9 +869,9 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 
 	// Check that the task has the correct BackoffPolicy values
 	Backoff1 := observedTask1.Spec.Restart.Backoff
-	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(10*time.Millisecond))
-	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(20*time.Millisecond))
-	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(4*time.Second))
+	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(maxTime))
 
 	// Since observedTask1 hasn't failed yet, check that failuresAfterSuccess is 0
 	RestartSV1 := orchestrator.restarts
@@ -898,16 +902,16 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 
 	// Check that the task has the correct BackoffPolicy values
 	Backoff2 := observedTask2.Spec.Restart.Backoff
-	assert.Equal(t, Backoff2.Base, gogotypes.DurationProto(10*time.Millisecond))
-	assert.Equal(t, Backoff2.Factor, gogotypes.DurationProto(20*time.Millisecond))
-	assert.Equal(t, Backoff2.Max, gogotypes.DurationProto(4*time.Second))
+	assert.Equal(t, Backoff2.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, Backoff2.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, Backoff2.Max, gogotypes.DurationProto(maxTime))
 
 	// We failed once
 	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask2), uint64(1))
 
 	testutils.Expect(t, watch, state.EventCommit{})
 
-	delay2a := 10*time.Millisecond + 20*time.Millisecond
+	delay2a := baseTime + factorTime
 	observedTask2a := testutils.WatchTaskUpdateDelay(t, watch, delay2a)
 	assert.Equal(t, observedTask2a.DesiredState, api.TaskStateRunning)
 	assert.Equal(t, observedTask2a.ServiceAnnotations.Name, "name1")
