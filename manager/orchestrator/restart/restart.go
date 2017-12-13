@@ -161,8 +161,13 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	// Restart delay is not applied to drained nodes
 	if n == nil || n.Spec.Availability != api.NodeAvailabilityDrain {
 		r.checkForSuccess(&t)
-		if ret, err := r.TaskRestartDelay(ctx, &t); err == nil {
-			restartDelay = *ret
+		if ret, randomize, err := r.TaskRestartDelay(ctx, &t); err == nil {
+			// Choose a uniformly distributed value from [0, backoffDuration).
+			if randomize {
+				restartDelay = time.Duration(rand.Int63n(int64(ret)))
+			} else {
+				restartDelay = ret
+			}
 		} else {
 			return err
 		}
@@ -192,8 +197,10 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	return nil
 }
 
-// TaskRestartDelay calculates and returns the next delay based t's RestartPolicy
-func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (*time.Duration, error) {
+// TaskRestartDelay calculates and returns the next delay based t's RestartPolicy.
+// It also returns whether the caller should randomized the value.
+// Important: It is the caller's responsibility to randomize the returned duration.
+func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (time.Duration, bool, error) {
 	var restartDelay time.Duration
 	backoff := &api.BackoffPolicy{
 		Base:   defaults.Service.Task.Restart.Backoff.Base,
@@ -219,10 +226,10 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (*time.D
 				log.G(ctx).WithError(err).Error("invalid restart delay; using default")
 				restartDelay, err = gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
 				if err != nil {
-					return nil, errors.New("error parsing RestartPolicy")
+					return 0, false, errors.New("error parsing RestartPolicy")
 				}
 			}
-			return &restartDelay, nil
+			return restartDelay, false, nil
 		}
 	}
 
@@ -230,13 +237,13 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (*time.D
 	var base, factor, max time.Duration
 	var err error
 	if base, err = gogotypes.DurationFromProto(backoff.Base); err != nil {
-		return nil, errors.New("error parsing backoff Base")
+		return 0, false, errors.New("error parsing backoff Base")
 	}
 	if factor, err = gogotypes.DurationFromProto(backoff.Factor); err != nil {
-		return nil, errors.New("error parsing backoff Factor")
+		return 0, false, errors.New("error parsing backoff Factor")
 	}
 	if max, err = gogotypes.DurationFromProto(backoff.Max); err != nil {
-		return nil, errors.New("error parsing backoff Max")
+		return 0, false, errors.New("error parsing backoff Max")
 	}
 
 	var failures uint64
@@ -258,15 +265,13 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (*time.D
 	}
 
 	// Use floating point values to detect overflow.  math.Pow returns +Inf on overflow
-	backoffDuration := float64(base) + float64(factor)*math.Pow(2, float64(failures))
+	backoffDuration := base + factor*time.Duration(math.Pow(2, float64(failures)))
 
-	if backoffDuration > float64(max) || backoffDuration < 0 {
-		backoffDuration = float64(max)
+	if backoffDuration > max || backoffDuration < 0 {
+		backoffDuration = max
 	}
 
-	// Choose a uniformly distributed value from [0, backoffDuration).
-	result := time.Duration(rand.Int63n(int64(backoffDuration)))
-	return &result, nil
+	return backoffDuration, true, nil
 }
 
 // shouldRestart returns true if a task should be restarted according to the

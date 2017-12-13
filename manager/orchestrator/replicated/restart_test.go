@@ -1,6 +1,7 @@
 package replicated
 
 import (
+	"math/rand"
 	"testing"
 	"time"
 
@@ -810,7 +811,7 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 
 	ctx := context.Background()
 	s := store.NewMemoryStore(nil)
-	assert.NotNil(t, s)
+	require.NotNil(t, s)
 	defer s.Close()
 
 	orchestrator := NewReplicatedOrchestrator(s)
@@ -853,14 +854,14 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 				},
 			},
 		}
-		assert.NoError(t, store.CreateService(tx, j1))
+		require.NoError(t, store.CreateService(tx, j1))
 		return nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Start the orchestrator.
 	go func() {
-		assert.NoError(t, orchestrator.Run(ctx))
+		require.NoError(t, orchestrator.Run(ctx))
 	}()
 
 	observedTask1 := testutils.WatchTaskCreate(t, watch)
@@ -868,23 +869,23 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 	assert.Equal(t, observedTask1.ServiceAnnotations.Name, "name1")
 
 	// Check that the task has the correct BackoffPolicy values
-	Backoff1 := observedTask1.Spec.Restart.Backoff
-	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(baseTime))
-	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(factorTime))
-	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(maxTime))
+	backoff1 := observedTask1.Spec.Restart.Backoff
+	assert.Equal(t, backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, backoff1.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, backoff1.Max, gogotypes.DurationProto(maxTime))
 
 	// Since observedTask1 hasn't failed yet, check that failuresAfterSuccess is 0
-	RestartSV1 := orchestrator.restarts
-	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask1), uint64(0))
+	restartSV1 := orchestrator.restarts
+	assert.Equal(t, restartSV1.GetFailuresSinceSuccess(observedTask1), uint64(0))
 
 	// Fail observedTask1
 	updatedTask1 := observedTask1.Copy()
 	updatedTask1.Status = api.TaskStatus{State: api.TaskStateFailed, Timestamp: ptypes.MustTimestampProto(time.Now())}
 	err = s.Update(func(tx store.Tx) error {
-		assert.NoError(t, store.UpdateTask(tx, updatedTask1))
+		require.NoError(t, store.UpdateTask(tx, updatedTask1))
 		return nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// observedTask1.Status.State changes to FAILED
 	testutils.Expect(t, watch, state.EventCommit{})
@@ -901,13 +902,13 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 	assert.Equal(t, observedTask2.ServiceAnnotations.Name, "name1")
 
 	// Check that the task has the correct BackoffPolicy values
-	Backoff2 := observedTask2.Spec.Restart.Backoff
-	assert.Equal(t, Backoff2.Base, gogotypes.DurationProto(baseTime))
-	assert.Equal(t, Backoff2.Factor, gogotypes.DurationProto(factorTime))
-	assert.Equal(t, Backoff2.Max, gogotypes.DurationProto(maxTime))
+	backoff2 := observedTask2.Spec.Restart.Backoff
+	assert.Equal(t, backoff2.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, backoff2.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, backoff2.Max, gogotypes.DurationProto(maxTime))
 
 	// We failed once
-	assert.Equal(t, RestartSV1.GetFailuresSinceSuccess(observedTask2), uint64(1))
+	assert.Equal(t, restartSV1.GetFailuresSinceSuccess(observedTask2), uint64(1))
 
 	testutils.Expect(t, watch, state.EventCommit{})
 
@@ -922,7 +923,7 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 
 	ctx := context.Background()
 	s := store.NewMemoryStore(nil)
-	assert.NotNil(t, s)
+	require.NotNil(t, s)
 	defer s.Close()
 
 	orchestrator := NewReplicatedOrchestrator(s)
@@ -966,14 +967,14 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 		},
 	}
 	err := s.Update(func(tx store.Tx) error {
-		assert.NoError(t, store.CreateService(tx, j1))
+		require.NoError(t, store.CreateService(tx, j1))
 		return nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Start the orchestrator.
 	go func() {
-		assert.NoError(t, orchestrator.Run(ctx))
+		require.NoError(t, orchestrator.Run(ctx))
 	}()
 
 	observedTask1 := testutils.WatchTaskCreate(t, watch)
@@ -981,19 +982,22 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 	assert.Equal(t, observedTask1.ServiceAnnotations.Name, "name1")
 
 	// Check that the task has the correct BackoffPolicy values
-	Backoff1 := observedTask1.Spec.Restart.Backoff
-	assert.Equal(t, Backoff1.Base, gogotypes.DurationProto(baseTime))
-	assert.Equal(t, Backoff1.Factor, gogotypes.DurationProto(factorTime))
-	assert.Equal(t, Backoff1.Max, gogotypes.DurationProto(maxTime))
+	backoff1 := observedTask1.Spec.Restart.Backoff
+	assert.Equal(t, backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, backoff1.Factor, gogotypes.DurationProto(factorTime))
+	assert.Equal(t, backoff1.Max, gogotypes.DurationProto(maxTime))
 
 	// Since observedTask1 hasn't failed yet, check that failuresAfterSuccess is 0
-	RestartSV1 := orchestrator.restarts
-	delayP, err := RestartSV1.TaskRestartDelay(ctx, observedTask1)
-	assert.NoError(t, err)
+	restartSV1 := orchestrator.restarts
+	delay, randomize, err := restartSV1.TaskRestartDelay(ctx, observedTask1)
+	require.NoError(t, err)
 
 	// Check that the delay duration is between 0 and the calculated backoff duration
-	// assert.Equal(t, *delayP, baseTime + factorTime)
-	assert.True(t, (0 <= *delayP) && (*delayP < baseTime+factorTime))
+	assert.Equal(t, delay, baseTime + factorTime)
+
+	// Randomize the delay
+	assert.True(t, randomize)
+	delay = time.Duration(rand.Int63n(int64(delay)))
 
 	// Update the service to use the original restart delay
 	err = s.Update(func(tx store.Tx) error {
@@ -1001,10 +1005,10 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 		service.Spec.Annotations.Name = "name2"
 		service.Spec.Task.Restart.Backoff = nil
 		service.Spec.Task.Restart.Delay = defaults.Service.Task.Restart.Delay
-		assert.NoError(t, store.UpdateService(tx, service))
+		require.NoError(t, store.UpdateService(tx, service))
 		return nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	observedTask2 := testutils.WatchTaskCreate(t, watch)
 	assert.Equal(t, observedTask2.Status.State, api.TaskStateNew)
@@ -1012,9 +1016,11 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 
 	// Check that we use the original delay (not backoff based)
 	originalDelay, err := gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	delayP2, err := RestartSV1.TaskRestartDelay(ctx, observedTask2)
-	assert.NoError(t, err)
-	assert.Equal(t, *delayP2, originalDelay)
+	delay, randomize, err = restartSV1.TaskRestartDelay(ctx, observedTask2)
+	require.NoError(t, err)
+
+	assert.False(t, randomize)
+	assert.Equal(t, delay, originalDelay)
 }

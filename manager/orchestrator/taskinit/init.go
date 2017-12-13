@@ -1,6 +1,7 @@
 package taskinit
 
 import (
+	"math/rand"
 	"sort"
 	"time"
 
@@ -61,8 +62,10 @@ func CheckTasks(ctx context.Context, s *store.MemoryStore, readTx store.ReadTx, 
 			if t.DesiredState != api.TaskStateReady || t.Status.State > api.TaskStateRunning {
 				continue
 			}
-			if ret, err := startSupervisor.TaskRestartDelay(ctx, t); err == nil && *ret >= 0 {
-				restartDelay := *ret
+			if restartDelay, randomize, err := startSupervisor.TaskRestartDelay(ctx, t); err == nil {
+				if randomize {
+					restartDelay = time.Duration(rand.Int63n(int64(restartDelay)))
+				} 
 				var timestamp time.Time
 				if t.Status.AppliedAt != nil {
 					timestamp, err = gogotypes.TimestampFromProto(t.Status.AppliedAt)
