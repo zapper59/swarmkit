@@ -24,9 +24,10 @@ var Service = api.ServiceSpec{
 			Condition: api.RestartOnAny,
 			Delay:     gogotypes.DurationProto(5 * time.Second),
 			Backoff: &api.BackoffPolicy{
-				Base:   gogotypes.DurationProto(0 * time.Second),
-				Factor: gogotypes.DurationProto(5 * time.Second),
-				Max:    gogotypes.DurationProto(30 * time.Minute),
+				Base:    gogotypes.DurationProto(0 * time.Second),
+				Factor:  gogotypes.DurationProto(5 * time.Second),
+				Max:     gogotypes.DurationProto(30 * time.Minute),
+				Monitor: gogotypes.DurationProto(5 * time.Second),
 			},
 		},
 		Placement: &api.Placement{},
@@ -90,6 +91,10 @@ func InterpolateService(origSpec *api.ServiceSpec) *api.ServiceSpec {
 			if spec.Task.Restart.Backoff.Max == nil {
 				spec.Task.Restart.Backoff.Max = &gogotypes.Duration{}
 				deepcopy.Copy(spec.Task.Restart.Backoff.Max, Service.Task.Restart.Backoff.Max)
+			}
+			if spec.Task.Restart.Backoff.Monitor == nil {
+				spec.Task.Restart.Backoff.Monitor = &gogotypes.Duration{}
+				deepcopy.Copy(spec.Task.Restart.Backoff.Monitor, Service.Task.Restart.Backoff.Monitor)
 			}
 		}
 	}

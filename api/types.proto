@@ -354,6 +354,13 @@ message BackoffPolicy {
 
 	// Maximum bound for single backoff
 	google.protobuf.Duration max = 3;
+
+	// Monitor indicates how long a task must run before it is considred
+	// to have started successfully. If it is restarted within Monitor of
+	// its creation this is counted as a failure.  If it fails after Monitor,
+	// it does not.  Defaults to 5 seconds.
+	// Note: can't use stdduration because this field needs to be nullable.
+	google.protobuf.Duration monitor = 4;
 }
 
 // UpdateConfig specifies the rate and policy of updates.

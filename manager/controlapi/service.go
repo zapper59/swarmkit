@@ -118,6 +118,15 @@ func validateBackoffPolicy(bp *api.BackoffPolicy) error {
 			return status.Errorf(codes.InvalidArgument, "TaskSpec: backoff-Max cannot be negative")
 		}
 	}
+	if bp.Monitor != nil {
+		monitor, err := gogotypes.DurationFromProto(bp.Monitor)
+		if err != nil {
+			return err
+		}
+		if monitor < 0 {
+			return status.Errorf(codes.InvalidArgument, "TaskSpec: backoff-Monitor cannot be negative")
+		}
+	}
 	return nil
 }
 

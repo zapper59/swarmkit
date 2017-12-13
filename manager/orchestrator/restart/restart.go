@@ -30,6 +30,8 @@ type instanceRestartInfo struct {
 	totalRestarts uint64
 	// counter of failures since the last call of Success
 	failuresSinceSuccess uint64
+	// timestamp of the last restart
+	lastRestart time.Time
 	// Linked list of restartedInstance structs. Only used when
 	// Restart.MaxAttempts and Restart.Window are both
 	// nonzero.
@@ -158,6 +160,7 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	var restartDelay time.Duration
 	// Restart delay is not applied to drained nodes
 	if n == nil || n.Spec.Availability != api.NodeAvailabilityDrain {
+		checkForSuccess(task * api.Task)
 		if ret, err := r.TaskRestartDelay(ctx, &t); err == nil {
 			restartDelay = *ret
 		} else {
@@ -412,9 +415,10 @@ func (r *Supervisor) UpdatableTasksInSlot(ctx context.Context, slot orchestrator
 // RecordRestartHistory updates the historyByService map to reflect the restart
 // of restartedTask.
 func (r *Supervisor) RecordRestartHistory(tuple orchestrator.SlotTuple, replacementTask *api.Task) {
-	if replacementTask.Spec.Restart == nil || replacementTask.Spec.Restart.MaxAttempts == 0 {
-		// No limit on the number of restarts, so no need to record
-		// history.
+	if spec := replacementTask.Spec.Restart; spec != nil && spec.Backoff == nil &&
+		spec.Restart == nil && spec.MaxAttempts == 0 {
+		// No need to record history if we are using fixed restart delay
+		// with unlimited attempts.
 		return
 	}
 
@@ -444,15 +448,16 @@ func (r *Supervisor) RecordRestartHistory(tuple orchestrator.SlotTuple, replacem
 	restartInfo.totalRestarts++
 	restartInfo.failuresSinceSuccess++
 
+	// it's okay to call TimestampFromProto with a nil argument
+	timestamp, err := gogotypes.TimestampFromProto(replacementTask.Meta.CreatedAt)
+	if replacementTask.Meta.CreatedAt == nil || err != nil {
+		timestamp = time.Now()
+	}
+	restartInfo.lastRestart = timestamp
+
 	if replacementTask.Spec.Restart.Window != nil && (replacementTask.Spec.Restart.Window.Seconds != 0 || replacementTask.Spec.Restart.Window.Nanos != 0) {
 		if restartInfo.restartedInstances == nil {
 			restartInfo.restartedInstances = list.New()
-		}
-
-		// it's okay to call TimestampFromProto with a nil argument
-		timestamp, err := gogotypes.TimestampFromProto(replacementTask.Meta.CreatedAt)
-		if replacementTask.Meta.CreatedAt == nil || err != nil {
-			timestamp = time.Now()
 		}
 
 		restartedInstance := restartedInstance{
@@ -463,12 +468,22 @@ func (r *Supervisor) RecordRestartHistory(tuple orchestrator.SlotTuple, replacem
 	}
 }
 
-// Success is called when a task successfully runs. Resets the
-// failuresSinceSuccess count for that task.
-func (r *Supervisor) Success(task *api.Task) {
+// checkForSuccess resets the failuresSinceSuccess count if the duration since
+// the last restart is more than the monitoring period
+func (r *Supervisor) checkForSuccess(task *api.Task) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	monitor, err := gotypes.DurationFromProto(defaults.Service.Task.Restart.Backoff.Monitor)
+	if err != nil {
+		return
+	}
+	if task.Spec.Restart != nil && task.Spec.Restart.Backoff != nil &&
+		task.Spec.Restart.Backoff.Monitor != nil {
+		if m, err := gotypes.DurationFromProto(task.Spec.Restart.Backoff.Monitor); err != nil {
+			monitor = m
+		}
+	}
 	serviceID := task.ServiceID
 	tuple := orchestrator.SlotTuple{
 		Slot:      task.Slot,
@@ -479,7 +494,9 @@ func (r *Supervisor) Success(task *api.Task) {
 		r.historyByService[serviceID][tuple] != nil {
 		restartInfo := r.historyByService[serviceID][tuple]
 
-		restartInfo.failuresSinceSuccess = 0
+		if time.Since(restartedInfo.lastRestart) > monitor {
+			restartInfo.failuresSinceSuccess = 0
+		}
 	}
 }
 

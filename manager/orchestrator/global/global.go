@@ -209,11 +209,8 @@ func (g *Orchestrator) handleTaskChange(ctx context.Context, t *api.Task) {
 		return
 	}
 
-	// Notify the restart supervisor when a task runs
-	if t.Status.State == api.TaskStateRunning {
-		g.restarts.Success(t)
-	} else if t.Status.State > api.TaskStateRunning {
-		// if a task has passed running, restart it
+	// if a task has passed running, restart it
+	if t.Status.State > api.TaskStateRunning {
 		g.restartTasks[t.ID] = struct{}{}
 	}
 }
