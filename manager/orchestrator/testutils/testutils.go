@@ -33,7 +33,7 @@ func WatchTaskUpdate(t *testing.T, watch chan events.Event) *api.Task {
 	return WatchTaskUpdateDelay(t, watch, time.Second)
 }
 
-// WatchTaskUpdateBackoff waits for a task using the Backoff Policy to be updated
+// WatchTaskUpdateDelay waits for a task using the Backoff Policy to be updated
 func WatchTaskUpdateDelay(t *testing.T, watch chan events.Event, delay time.Duration) *api.Task {
 	for {
 		select {

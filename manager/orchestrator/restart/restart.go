@@ -160,10 +160,7 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	var restartDelay time.Duration
 	// Restart delay is not applied to drained nodes
 	if n == nil || n.Spec.Availability != api.NodeAvailabilityDrain {
-<<<<<<< HEAD
 		r.checkForSuccess(&t)
-=======
->>>>>>> 58b2362f8821122e02043b128e44b0b7a0c17e4a
 		if ret, err := r.TaskRestartDelay(ctx, &t); err == nil {
 			restartDelay = *ret
 		} else {
