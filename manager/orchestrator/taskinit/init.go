@@ -65,7 +65,7 @@ func CheckTasks(ctx context.Context, s *store.MemoryStore, readTx store.ReadTx, 
 			if restartDelay, randomize, err := startSupervisor.TaskRestartDelay(ctx, t); err == nil {
 				if randomize {
 					restartDelay = time.Duration(rand.Int63n(int64(restartDelay)))
-				} 
+				}
 				var timestamp time.Time
 				if t.Status.AppliedAt != nil {
 					timestamp, err = gogotypes.TimestampFromProto(t.Status.AppliedAt)

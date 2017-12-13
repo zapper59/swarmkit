@@ -1,7 +1,6 @@
 package replicated
 
 import (
-	"math/rand"
 	"testing"
 	"time"
 
@@ -993,11 +992,10 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that the delay duration is between 0 and the calculated backoff duration
-	assert.Equal(t, delay, baseTime + factorTime)
+	assert.Equal(t, delay, baseTime+factorTime)
 
-	// Randomize the delay
+	// We should randomize the delay
 	assert.True(t, randomize)
-	delay = time.Duration(rand.Int63n(int64(delay)))
 
 	// Update the service to use the original restart delay
 	err = s.Update(func(tx store.Tx) error {
