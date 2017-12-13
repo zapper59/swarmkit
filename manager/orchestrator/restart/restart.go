@@ -160,7 +160,10 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	var restartDelay time.Duration
 	// Restart delay is not applied to drained nodes
 	if n == nil || n.Spec.Availability != api.NodeAvailabilityDrain {
+<<<<<<< HEAD
 		r.checkForSuccess(&t)
+=======
+>>>>>>> 58b2362f8821122e02043b128e44b0b7a0c17e4a
 		if ret, err := r.TaskRestartDelay(ctx, &t); err == nil {
 			restartDelay = *ret
 		} else {
@@ -202,13 +205,13 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (*time.D
 	}
 	if t.Spec.Restart != nil {
 		if t.Spec.Restart.Backoff != nil {
-			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Base); b != nil && a >= 0 {
+			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Base); b == nil && a >= 0 {
 				backoff.Base = t.Spec.Restart.Backoff.Base
 			}
-			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Factor); b != nil && a >= 0 {
+			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Factor); b == nil && a >= 0 {
 				backoff.Factor = t.Spec.Restart.Backoff.Factor
 			}
-			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Max); b != nil && a >= 0 {
+			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Max); b == nil && a >= 0 {
 				backoff.Max = t.Spec.Restart.Backoff.Max
 			}
 		} else if t.Spec.Restart.Delay != nil {
@@ -502,6 +505,28 @@ func (r *Supervisor) checkForSuccess(task *api.Task) {
 			restartInfo.failuresSinceSuccess = 0
 		}
 	}
+}
+
+// GetFailuresSinceSuccess returns failuresSinceSuccess of the given task
+func (r *Supervisor) GetFailuresSinceSuccess(task *api.Task) uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	serviceID := task.ServiceID
+	tuple := orchestrator.SlotTuple{
+		Slot:      task.Slot,
+		ServiceID: task.ServiceID,
+		NodeID:    task.NodeID,
+	}
+
+	if r.historyByService[serviceID] != nil &&
+		r.historyByService[serviceID][tuple] != nil {
+		restartInfo := r.historyByService[serviceID][tuple]
+
+		return restartInfo.failuresSinceSuccess
+	}
+	// restartInfo.failuresSinceSuccess should be zero on first run of task
+	return 0
 }
 
 // DelayStart starts a timer that moves the task from READY to RUNNING once:
