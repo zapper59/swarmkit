@@ -2646,6 +2646,14 @@ file {
       type_name: ".google.protobuf.Duration"
       json_name: "max"
     }
+    field {
+      name: "monitor"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".google.protobuf.Duration"
+      json_name: "monitor"
+    }
   }
   message_type {
     name: "UpdateConfig"
@@ -7959,7 +7967,7 @@ file {
       number: 5
       label: LABEL_OPTIONAL
       type: TYPE_BYTES
-      json_name: "RootCA"
+      json_name: "rootCA"
     }
   }
   message_type {
@@ -8630,7 +8638,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "Term"
+      json_name: "term"
     }
     field {
       name: "Index"
@@ -8640,7 +8648,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "Index"
+      json_name: "index"
     }
     field {
       name: "Type"
@@ -8651,14 +8659,14 @@ file {
       options {
         65001: 0
       }
-      json_name: "Type"
+      json_name: "type"
     }
     field {
       name: "Data"
       number: 4
       label: LABEL_OPTIONAL
       type: TYPE_BYTES
-      json_name: "Data"
+      json_name: "data"
     }
   }
   message_type {
@@ -8892,7 +8900,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "ID"
+      json_name: "iD"
     }
     field {
       name: "Type"
@@ -8903,7 +8911,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "Type"
+      json_name: "type"
     }
     field {
       name: "NodeID"
@@ -8913,14 +8921,14 @@ file {
       options {
         65001: 0
       }
-      json_name: "NodeID"
+      json_name: "nodeID"
     }
     field {
       name: "Context"
       number: 4
       label: LABEL_OPTIONAL
       type: TYPE_BYTES
-      json_name: "Context"
+      json_name: "context"
     }
   }
   enum_type {

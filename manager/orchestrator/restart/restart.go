@@ -160,7 +160,7 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	var restartDelay time.Duration
 	// Restart delay is not applied to drained nodes
 	if n == nil || n.Spec.Availability != api.NodeAvailabilityDrain {
-		checkForSuccess(task * api.Task)
+		r.checkForSuccess(&t)
 		if ret, err := r.TaskRestartDelay(ctx, &t); err == nil {
 			restartDelay = *ret
 		} else {
@@ -416,7 +416,7 @@ func (r *Supervisor) UpdatableTasksInSlot(ctx context.Context, slot orchestrator
 // of restartedTask.
 func (r *Supervisor) RecordRestartHistory(tuple orchestrator.SlotTuple, replacementTask *api.Task) {
 	if spec := replacementTask.Spec.Restart; spec != nil && spec.Backoff == nil &&
-		spec.Restart == nil && spec.MaxAttempts == 0 {
+		spec.Delay != nil && spec.MaxAttempts == 0 {
 		// No need to record history if we are using fixed restart delay
 		// with unlimited attempts.
 		return
@@ -455,6 +455,10 @@ func (r *Supervisor) RecordRestartHistory(tuple orchestrator.SlotTuple, replacem
 	}
 	restartInfo.lastRestart = timestamp
 
+	if replacementTask.Spec.Restart == nil || replacementTask.Spec.Restart.MaxAttempts == 0 {
+		return
+	}
+
 	if replacementTask.Spec.Restart.Window != nil && (replacementTask.Spec.Restart.Window.Seconds != 0 || replacementTask.Spec.Restart.Window.Nanos != 0) {
 		if restartInfo.restartedInstances == nil {
 			restartInfo.restartedInstances = list.New()
@@ -474,13 +478,13 @@ func (r *Supervisor) checkForSuccess(task *api.Task) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	monitor, err := gotypes.DurationFromProto(defaults.Service.Task.Restart.Backoff.Monitor)
+	monitor, err := gogotypes.DurationFromProto(defaults.Service.Task.Restart.Backoff.Monitor)
 	if err != nil {
 		return
 	}
 	if task.Spec.Restart != nil && task.Spec.Restart.Backoff != nil &&
 		task.Spec.Restart.Backoff.Monitor != nil {
-		if m, err := gotypes.DurationFromProto(task.Spec.Restart.Backoff.Monitor); err != nil {
+		if m, err := gogotypes.DurationFromProto(task.Spec.Restart.Backoff.Monitor); err != nil {
 			monitor = m
 		}
 	}
@@ -494,7 +498,7 @@ func (r *Supervisor) checkForSuccess(task *api.Task) {
 		r.historyByService[serviceID][tuple] != nil {
 		restartInfo := r.historyByService[serviceID][tuple]
 
-		if time.Since(restartedInfo.lastRestart) > monitor {
+		if time.Since(restartInfo.lastRestart) > monitor {
 			restartInfo.failuresSinceSuccess = 0
 		}
 	}
