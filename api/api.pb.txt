@@ -7967,7 +7967,7 @@ file {
       number: 5
       label: LABEL_OPTIONAL
       type: TYPE_BYTES
-      json_name: "rootCA"
+      json_name: "RootCA"
     }
   }
   message_type {
@@ -8638,7 +8638,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "term"
+      json_name: "Term"
     }
     field {
       name: "Index"
@@ -8648,7 +8648,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "index"
+      json_name: "Index"
     }
     field {
       name: "Type"
@@ -8659,14 +8659,14 @@ file {
       options {
         65001: 0
       }
-      json_name: "type"
+      json_name: "Type"
     }
     field {
       name: "Data"
       number: 4
       label: LABEL_OPTIONAL
       type: TYPE_BYTES
-      json_name: "data"
+      json_name: "Data"
     }
   }
   message_type {
@@ -8900,7 +8900,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "iD"
+      json_name: "ID"
     }
     field {
       name: "Type"
@@ -8911,7 +8911,7 @@ file {
       options {
         65001: 0
       }
-      json_name: "type"
+      json_name: "Type"
     }
     field {
       name: "NodeID"
@@ -8921,14 +8921,14 @@ file {
       options {
         65001: 0
       }
-      json_name: "nodeID"
+      json_name: "NodeID"
     }
     field {
       name: "Context"
       number: 4
       label: LABEL_OPTIONAL
       type: TYPE_BYTES
-      json_name: "context"
+      json_name: "Context"
     }
   }
   enum_type {
