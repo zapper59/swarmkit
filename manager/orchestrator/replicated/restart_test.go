@@ -819,9 +819,9 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
 	defer cancel()
 
-	baseTime := 10*time.Millisecond
-	factorTime := 20*time.Millisecond
-	maxTime := 4*time.Second
+	baseTime := 10 * time.Millisecond
+	factorTime := 20 * time.Millisecond
+	maxTime := 4 * time.Second
 
 	// Create a service with one instance specified before the orchestrator is
 	// started. This should result in one task when the orchestrator starts up.
@@ -931,9 +931,9 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
 	defer cancel()
 
-	baseTime := 10*time.Millisecond
-	factorTime := 20*time.Millisecond
-	maxTime := 4*time.Second
+	baseTime := 10 * time.Millisecond
+	factorTime := 20 * time.Millisecond
+	maxTime := 4 * time.Second
 
 	// Create a service with two instances specified before the orchestrator is
 	// started. This should result in two tasks when the orchestrator
@@ -993,7 +993,7 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 
 	// Check that the delay duration is between 0 and the calculated backoff duration
 	// assert.Equal(t, *delayP, baseTime + factorTime)
-	assert.True(t, (0 <= *delayP) && (*delayP < baseTime + factorTime))
+	assert.True(t, (0 <= *delayP) && (*delayP < baseTime+factorTime))
 
 	// Update the service to use the original restart delay
 	err = s.Update(func(tx store.Tx) error {
