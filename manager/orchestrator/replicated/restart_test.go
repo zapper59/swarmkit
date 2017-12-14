@@ -819,7 +819,7 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
 	defer cancel()
 
-	baseTime := 10 * time.Millisecond
+	delayTime := 10 * time.Millisecond
 	factorTime := 20 * time.Millisecond
 	maxTime := 4 * time.Second
 
@@ -838,8 +838,8 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 					},
 					Restart: &api.RestartPolicy{
 						Condition: api.RestartOnAny,
+						Delay:     gogotypes.DurationProto(delayTime),
 						Backoff: &api.BackoffPolicy{
-							Base:   gogotypes.DurationProto(baseTime),
 							Factor: gogotypes.DurationProto(factorTime),
 							Max:    gogotypes.DurationProto(maxTime),
 						},
@@ -869,7 +869,7 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 
 	// Check that the task has the correct BackoffPolicy values
 	backoff1 := observedTask1.Spec.Restart.Backoff
-	assert.Equal(t, backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, observedTask1.Spec.Restart.Delay, gogotypes.DurationProto(delayTime))
 	assert.Equal(t, backoff1.Factor, gogotypes.DurationProto(factorTime))
 	assert.Equal(t, backoff1.Max, gogotypes.DurationProto(maxTime))
 
@@ -902,7 +902,7 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 
 	// Check that the task has the correct BackoffPolicy values
 	backoff2 := observedTask2.Spec.Restart.Backoff
-	assert.Equal(t, backoff2.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, observedTask2.Spec.Restart.Delay, gogotypes.DurationProto(delayTime))
 	assert.Equal(t, backoff2.Factor, gogotypes.DurationProto(factorTime))
 	assert.Equal(t, backoff2.Max, gogotypes.DurationProto(maxTime))
 
@@ -911,7 +911,7 @@ func TestOrchestratorBackoffValues(t *testing.T) {
 
 	testutils.Expect(t, watch, state.EventCommit{})
 
-	delay2a := baseTime + factorTime
+	delay2a := delayTime + factorTime
 	observedTask2a := testutils.WatchTaskUpdateDelay(t, watch, delay2a)
 	assert.Equal(t, observedTask2a.DesiredState, api.TaskStateRunning)
 	assert.Equal(t, observedTask2a.ServiceAnnotations.Name, "name1")
@@ -931,7 +931,7 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 	watch, cancel := state.Watch(s.WatchQueue() /*api.EventCreateTask{}, api.EventUpdateTask{}*/)
 	defer cancel()
 
-	baseTime := 10 * time.Millisecond
+	delayTime := 10 * time.Millisecond
 	factorTime := 20 * time.Millisecond
 	maxTime := 4 * time.Second
 
@@ -950,8 +950,8 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 				},
 				Restart: &api.RestartPolicy{
 					Condition: api.RestartOnAny,
+					Delay:     gogotypes.DurationProto(delayTime),
 					Backoff: &api.BackoffPolicy{
-						Base:   gogotypes.DurationProto(baseTime),
 						Factor: gogotypes.DurationProto(factorTime),
 						Max:    gogotypes.DurationProto(maxTime),
 					},
@@ -982,7 +982,7 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 
 	// Check that the task has the correct BackoffPolicy values
 	backoff1 := observedTask1.Spec.Restart.Backoff
-	assert.Equal(t, backoff1.Base, gogotypes.DurationProto(baseTime))
+	assert.Equal(t, observedTask1.Spec.Restart.Delay, gogotypes.DurationProto(delayTime))
 	assert.Equal(t, backoff1.Factor, gogotypes.DurationProto(factorTime))
 	assert.Equal(t, backoff1.Max, gogotypes.DurationProto(maxTime))
 
@@ -992,7 +992,7 @@ func TestOrchestratorTaskRestartDelay(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that the delay duration is between 0 and the calculated backoff duration
-	assert.Equal(t, delay, baseTime+factorTime)
+	assert.Equal(t, delay, delayTime+factorTime)
 
 	// We should randomize the delay
 	assert.True(t, randomize)
