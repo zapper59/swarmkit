@@ -197,48 +197,48 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 	return nil
 }
 
-// TaskRestartDelay calculates and returns the next delay based t's RestartPolicy.
-// It also returns whether the caller should randomized the value.
-// Important: It is the caller's responsibility to randomize the returned duration.
+// TaskRestartDelay calculates and returns the next delay based on t's RestartPolicy.
+// randomize is true if a backoff policy is being used,  false if the RestartPolicy
+// is configured for a fixed restart delay
 func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (time.Duration, bool, error) {
-	var restartDelay time.Duration
-	backoff := &api.BackoffPolicy{
-		Base:   defaults.Service.Task.Restart.Backoff.Base,
-		Factor: defaults.Service.Task.Restart.Backoff.Factor,
-		Max:    defaults.Service.Task.Restart.Backoff.Max,
-	}
-	if t.Spec.Restart != nil {
-		if t.Spec.Restart.Backoff != nil {
-			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Base); b == nil && a >= 0 {
-				backoff.Base = t.Spec.Restart.Backoff.Base
-			}
-			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Factor); b == nil && a >= 0 {
-				backoff.Factor = t.Spec.Restart.Backoff.Factor
-			}
-			if a, b := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Max); b == nil && a >= 0 {
-				backoff.Max = t.Spec.Restart.Backoff.Max
-			}
-		} else if t.Spec.Restart.Delay != nil {
-			// Use fixed restart delay
-			var err error
-			restartDelay, err = gogotypes.DurationFromProto(t.Spec.Restart.Delay)
-			if err != nil {
-				log.G(ctx).WithError(err).Error("invalid restart delay; using default")
-				restartDelay, err = gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
-				if err != nil {
+  restartDelay := time.Duration(0)
+   backoff := &api.BackoffPolicy{
+           Factor: defaults.Service.Task.Restart.Backoff.Factor,
+           Max:    defaults.Service.Task.Restart.Backoff.Max,
+   }
+  // If no restart is defined we use the default exponential backoff configuration
+   if t.Spec.Restart != nil {
+          if delay, delayErr := gogotypes.DurationFromProto(t.Spec.Restart.Delay); del
+                  restartDelay = delay
+          }
+          if t.Spec.Restart.Backoff == nil && t.Spec.Restart.Delay != nil {
+                  // Use fixed restart delay instead of exponential
+                  if delayErr != nil {
+						  log.G(ctx).WithError(err).Error("invalid restart delay; using default")
+		        // We only use this default if the user has configured for fixed restart delay
+                 restartDelay, err = gogotypes.DurationFromProto(defaults.Ser
+                // If user defined a delay without a backoff, but that delay and the
+                // default delay can't be read we fail fast instead of defaulting to
+                // a randomized exponential backoff.
+                 if err != nil {
 					return 0, false, errors.New("error parsing RestartPolicy")
-				}
-			}
-			return restartDelay, false, nil
-		}
-	}
+                           }
+                   }
+                   return restartDelay, false, nil
+           }
+         // If the user defined backoff can be read we override default values
+         if val, err := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Factor); err
+                 backoff.Factor = t.Spec.Restart.Backoff.Factor
+         }
+         if val, err := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Max); err
+                 backoff.Max = t.Spec.Restart.Backoff.Max
+         }
+   }
+
 
 	// Use jittered binary exponential backoff delay
-	var base, factor, max time.Duration
+	var factor, max time.Duration
 	var err error
-	if base, err = gogotypes.DurationFromProto(backoff.Base); err != nil {
-		return 0, false, errors.New("error parsing backoff Base")
-	}
 	if factor, err = gogotypes.DurationFromProto(backoff.Factor); err != nil {
 		return 0, false, errors.New("error parsing backoff Factor")
 	}
@@ -265,7 +265,7 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (time.Du
 	}
 
 	// Use floating point values to detect overflow.  math.Pow returns +Inf on overflow
-	backoffDuration := base + factor*time.Duration(math.Pow(2, float64(failures)))
+	backoffDuration := restartDelay + factor*time.Duration(math.Pow(2, float64(failures)))
 
 	if backoffDuration > max || backoffDuration < 0 {
 		backoffDuration = max

@@ -46,7 +46,6 @@ func AddServiceFlags(flags *pflag.FlagSet) {
 
 	flags.String("restart-condition", "any", "condition to restart the task (any, failure, none)")
 	flags.String("restart-delay", "", "delay between task restarts/ not compatible with the restart-backoff flags")
-	flags.String("restart-backoff-base", "0s", "base for restart backoff")
 	flags.String("restart-backoff-factor", "5s", "exponential factor for restart backoff")
 	flags.String("restart-backoff-max", "30m", "max delay for restart backoff")
 	flags.Uint64("restart-max-attempts", 0, "maximum number of restart attempts (0 = unlimited)")

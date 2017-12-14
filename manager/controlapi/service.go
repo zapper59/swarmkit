@@ -87,18 +87,10 @@ func validateRestartPolicy(rp *api.RestartPolicy) error {
 	return validateBackoffPolicy(rp.Backoff)
 }
 
+// Returns an error if bp contains negative values
 func validateBackoffPolicy(bp *api.BackoffPolicy) error {
 	if bp == nil {
 		return nil
-	}
-	if bp.Base != nil {
-		base, err := gogotypes.DurationFromProto(bp.Base)
-		if err != nil {
-			return err
-		}
-		if base < 0 {
-			return status.Errorf(codes.InvalidArgument, "TaskSpec: backoff-base cannot be negative")
-		}
 	}
 	if bp.Factor != nil {
 		factor, err := gogotypes.DurationFromProto(bp.Factor)
