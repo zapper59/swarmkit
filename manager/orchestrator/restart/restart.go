@@ -201,40 +201,41 @@ func (r *Supervisor) Restart(ctx context.Context, tx store.Tx, cluster *api.Clus
 // randomize is true if a backoff policy is being used,  false if the RestartPolicy
 // is configured for a fixed restart delay
 func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (time.Duration, bool, error) {
-  restartDelay := time.Duration(0)
-   backoff := &api.BackoffPolicy{
-           Factor: defaults.Service.Task.Restart.Backoff.Factor,
-           Max:    defaults.Service.Task.Restart.Backoff.Max,
-   }
-  // If no restart is defined we use the default exponential backoff configuration
-   if t.Spec.Restart != nil {
-          if delay, delayErr := gogotypes.DurationFromProto(t.Spec.Restart.Delay); del
-                  restartDelay = delay
-          }
-          if t.Spec.Restart.Backoff == nil && t.Spec.Restart.Delay != nil {
-                  // Use fixed restart delay instead of exponential
-                  if delayErr != nil {
-						  log.G(ctx).WithError(err).Error("invalid restart delay; using default")
-		        // We only use this default if the user has configured for fixed restart delay
-                 restartDelay, err = gogotypes.DurationFromProto(defaults.Ser
-                // If user defined a delay without a backoff, but that delay and the
-                // default delay can't be read we fail fast instead of defaulting to
-                // a randomized exponential backoff.
-                 if err != nil {
-					return 0, false, errors.New("error parsing RestartPolicy")
-                           }
-                   }
-                   return restartDelay, false, nil
-           }
-         // If the user defined backoff can be read we override default values
-         if val, err := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Factor); err
-                 backoff.Factor = t.Spec.Restart.Backoff.Factor
-         }
-         if val, err := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Max); err
-                 backoff.Max = t.Spec.Restart.Backoff.Max
-         }
-   }
+	restartDelay := time.Duration(0)
+	backoff := &api.BackoffPolicy{
+		Factor: defaults.Service.Task.Restart.Backoff.Factor,
+		Max:    defaults.Service.Task.Restart.Backoff.Max,
+	}
+	// If no restart is defined we use the default exponential backoff configuration
+	if t.Spec.Restart != nil {
+		var delayErr error
+		if delay, delayErr := gogotypes.DurationFromProto(t.Spec.Restart.Delay); delayErr == nil {
+			restartDelay = delay
+		}
+		if t.Spec.Restart.Backoff == nil && t.Spec.Restart.Delay != nil {
+			// Use fixed restart delay instead of exponential
+			if delayErr != nil {
+				log.G(ctx).WithError(delayErr).Error("invalid restart delay; using default")
+				// We only use this default if the user has configured for fixed restart delay
+				restartDelay, delayErr = gogotypes.DurationFromProto(defaults.Service.Task.Restart.Delay)
 
+				// If user defined a delay without a backoff, but that delay and the
+				// default delay can't be read we fail fast instead of defaulting to
+				// a randomized exponential backoff.
+				if delayErr != nil {
+					return 0, false, errors.New("error parsing RestartPolicy")
+				}
+			}
+			return restartDelay, false, nil
+		}
+		// If the user defined backoff can be read we override default values
+		if _, err := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Factor); err == nil {
+			backoff.Factor = t.Spec.Restart.Backoff.Factor
+		}
+		if _, err := gogotypes.DurationFromProto(t.Spec.Restart.Backoff.Max); err == nil {
+			backoff.Max = t.Spec.Restart.Backoff.Max
+		}
+	}
 
 	// Use jittered binary exponential backoff delay
 	var factor, max time.Duration
@@ -246,6 +247,7 @@ func (r *Supervisor) TaskRestartDelay(ctx context.Context, t *api.Task) (time.Du
 		return 0, false, errors.New("error parsing backoff Max")
 	}
 
+	// Get the failure count from history
 	var failures uint64
 	r.mu.Lock()
 	defer r.mu.Unlock()

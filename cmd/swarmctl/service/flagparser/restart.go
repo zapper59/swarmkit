@@ -1,7 +1,6 @@
 package flagparser
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
